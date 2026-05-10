@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "531578286301",
+    "project_id": "moodarchive-32832",
+    "storage_bucket": "moodarchive-32832.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:531578286301:android:802b573ef765dd6c20eb34",
+        "android_client_info": {
+          "package_name": "com.example.zametki"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyABCgQzNzjOBe2SpiOJM48XQOZl3SoPA9o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
