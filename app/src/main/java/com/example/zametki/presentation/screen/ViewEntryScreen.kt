@@ -64,8 +64,12 @@ fun ViewEntryScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     val attachments by viewModel.attachments.collectAsState()
 
+    val currentEntry by viewModel.currentEntry.collectAsState()
+    val displayEntry = currentEntry ?: entry
+
     LaunchedEffect(entry.id) {
         viewModel.loadAttachments(entry.id)
+        viewModel.loadEntry(entry.id)
     }
 
     if (showDeleteDialog) {
@@ -113,7 +117,7 @@ fun ViewEntryScreen(
                 actions = {
                     TextActionButton(
                         text = "Изменить",
-                        onClick = { onEdit(entry) }
+                        onClick = { onEdit(displayEntry) }
                     )
                     IconButton(onClick = { showDeleteDialog = true }) {
                         Icon(
@@ -142,27 +146,27 @@ fun ViewEntryScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = formatDate(entry.createdAt),
+                text = formatDate(displayEntry.createdAt),
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            if (entry.emotionEmoji.isNotEmpty()) {
+            if (displayEntry.emotionEmoji.isNotEmpty()) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .clip(RoundedCornerShape(12.dp))
                         .background(
-                            parseColor(entry.emotionColor).copy(alpha = 0.15f)
+                            parseColor(displayEntry.emotionColor).copy(alpha = 0.15f)
                         )
                         .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    Text(text = entry.emotionEmoji, fontSize = 20.sp)
+                    Text(text = displayEntry.emotionEmoji, fontSize = 20.sp)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = entry.emotionName,
+                        text = displayEntry.emotionName,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurface
@@ -171,9 +175,9 @@ fun ViewEntryScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            if (entry.title.isNotEmpty()) {
+            if (displayEntry.title.isNotEmpty()) {
                 Text(
-                    text = entry.title,
+                    text = displayEntry.title,
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
@@ -181,9 +185,9 @@ fun ViewEntryScreen(
                 Spacer(modifier = Modifier.height(12.dp))
             }
 
-            if (entry.text.isNotEmpty()) {
+            if (displayEntry.text.isNotEmpty()) {
                 Text(
-                    text = entry.text,
+                    text = displayEntry.text,
                     fontSize = 16.sp,
                     color = MaterialTheme.colorScheme.onSurface,
                     lineHeight = 26.sp
@@ -198,13 +202,10 @@ fun ViewEntryScreen(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(MaterialTheme.colorScheme.surface),
-                    verticalArrangement = Arrangement.spacedBy(0.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    attachments.forEachIndexed { index, attachment ->
+                    attachments.forEach { attachment ->
                         when (attachment.type) {
 
                             AttachmentType.PHOTO -> {
@@ -212,16 +213,7 @@ fun ViewEntryScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(220.dp)
-                                        .clip(
-                                            if (attachments.size == 1)
-                                                RoundedCornerShape(16.dp)
-                                            else if (index == 0)
-                                                RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
-                                            else if (index == attachments.size - 1)
-                                                RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp)
-                                            else
-                                                RoundedCornerShape(0.dp)
-                                        )
+                                        .clip(RoundedCornerShape(16.dp))
                                         .clickable {
                                             openFile(context, attachment.localPath)
                                         }
@@ -238,17 +230,25 @@ fun ViewEntryScreen(
                             }
 
                             AttachmentType.AUDIO -> {
-                                AudioPlayerItem(
-                                    filePath = attachment.localPath,
-                                    fileName = attachment.fileName
-                                )
-                                if (index < attachments.size - 1) AppleDivider()
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(MaterialTheme.colorScheme.surface)
+                                ) {
+                                    AudioPlayerItem(
+                                        filePath = attachment.localPath,
+                                        fileName = attachment.fileName
+                                    )
+                                }
                             }
 
                             AttachmentType.VIDEO -> {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(MaterialTheme.colorScheme.surface)
                                         .clickable { openFile(context, attachment.localPath) }
                                         .padding(16.dp),
                                     verticalAlignment = Alignment.CenterVertically
@@ -274,13 +274,14 @@ fun ViewEntryScreen(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                                if (index < attachments.size - 1) AppleDivider()
                             }
 
                             AttachmentType.FILE -> {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(MaterialTheme.colorScheme.surface)
                                         .clickable { openFile(context, attachment.localPath) }
                                         .padding(16.dp),
                                     verticalAlignment = Alignment.CenterVertically
@@ -306,14 +307,13 @@ fun ViewEntryScreen(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                                if (index < attachments.size - 1) AppleDivider()
                             }
                         }
                     }
                 }
             }
 
-            if (entry.title.isEmpty() && entry.text.isEmpty() && attachments.isEmpty()) {
+            if (displayEntry.title.isEmpty() && displayEntry.text.isEmpty() && attachments.isEmpty()) {
                 Spacer(modifier = Modifier.height(40.dp))
                 Box(
                     modifier = Modifier.fillMaxWidth(),

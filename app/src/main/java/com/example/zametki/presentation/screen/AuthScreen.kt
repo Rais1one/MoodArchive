@@ -51,6 +51,31 @@ fun AuthScreen(
     var errorMessage by remember { mutableStateOf("") }
     var isLoginMode by remember { mutableStateOf(true) }
 
+    fun validateEmail(input: String): String? {
+        return when {
+            input.isEmpty() -> "Введи email"
+            input.contains(" ") -> "Email не должен содержать пробелы"
+            !input.contains("@") -> "Неверный формат email — нет символа @"
+            input.startsWith("@") -> "Неверный формат email"
+            input.endsWith("@") -> "Неверный формат email"
+            input.startsWith(".") -> "Email не может начинаться с точки"
+            input.endsWith(".") -> "Email не может заканчиваться точкой"
+            input.contains("..") -> "Email не может содержать две точки подряд"
+            !input.contains(".") -> "Неверный формат email — нет точки"
+            input.substringAfter("@").isEmpty() -> "Неверный формат email"
+            else -> null
+        }
+    }
+
+    fun validatePassword(input: String): String? {
+        return when {
+            input.isEmpty() -> "Введи пароль"
+            input.contains(" ") -> "Пароль не должен содержать пробелы"
+            input.length < 6 -> "Пароль минимум 6 символов"
+            else -> null
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -102,8 +127,11 @@ fun AuthScreen(
             ) {
                 TextField(
                     value = email,
-                    onValueChange = {
-                        email = it
+                    onValueChange = { input ->
+                        val filtered = input
+                            .replace(" ", "")
+                            .let { if (it.startsWith(".")) it.drop(1) else it }
+                        email = filtered
                         errorMessage = ""
                     },
                     placeholder = {
@@ -124,8 +152,8 @@ fun AuthScreen(
 
                 TextField(
                     value = password,
-                    onValueChange = {
-                        password = it
+                    onValueChange = { input ->
+                        password = input.replace(" ", "")
                         errorMessage = ""
                     },
                     placeholder = {
@@ -160,12 +188,15 @@ fun AuthScreen(
 
             Button(
                 onClick = {
-                    if (email.isEmpty() || password.isEmpty()) {
-                        errorMessage = "Заполни все поля"
+                    val emailError = validateEmail(email)
+                    if (emailError != null) {
+                        errorMessage = emailError
                         return@Button
                     }
-                    if (password.length < 6) {
-                        errorMessage = "Пароль минимум 6 символов"
+
+                    val passwordError = validatePassword(password)
+                    if (passwordError != null) {
+                        errorMessage = passwordError
                         return@Button
                     }
 
@@ -173,11 +204,17 @@ fun AuthScreen(
                     scope.launch {
                         try {
                             if (isLoginMode) {
-                                val result = auth.signInWithEmailAndPassword(email, password).await()
+                                val result = auth.signInWithEmailAndPassword(
+                                    email.trim(),
+                                    password
+                                ).await()
                                 val userId = result.user?.uid ?: ""
                                 onAuthSuccess(userId)
                             } else {
-                                val result = auth.createUserWithEmailAndPassword(email, password).await()
+                                val result = auth.createUserWithEmailAndPassword(
+                                    email.trim(),
+                                    password
+                                ).await()
                                 val userId = result.user?.uid ?: ""
                                 onAuthSuccess(userId)
                             }
@@ -191,6 +228,8 @@ fun AuthScreen(
                                     "Неверный пароль"
                                 e.message?.contains("badly formatted") == true ->
                                     "Неверный формат email"
+                                e.message?.contains("INVALID_LOGIN_CREDENTIALS") == true ->
+                                    "Неверный email или пароль"
                                 else -> "Ошибка входа"
                             }
                         } finally {
@@ -227,6 +266,8 @@ fun AuthScreen(
             TextButton(onClick = {
                 isLoginMode = !isLoginMode
                 errorMessage = ""
+                email = ""
+                password = ""
             }) {
                 Text(
                     text = if (isLoginMode)

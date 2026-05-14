@@ -30,7 +30,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,9 +46,11 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.zametki.preferences.PinManager
-import com.example.zametki.sync.SyncManager
-import com.example.zametki.util.exportToMarkdown
+import com.example.zametki.preferences.ReminderPreferences
 import com.example.zametki.presentation.viewmodel.ViewModel
+import com.example.zametki.sync.SyncManager
+import com.example.zametki.util.ReminderManager
+import com.example.zametki.util.exportToMarkdown
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -59,6 +60,8 @@ fun SettingsScreen(
     isDarkTheme: Boolean,
     syncManager: SyncManager,
     pinManager: PinManager,
+    reminderPreferences: ReminderPreferences,
+    reminderManager: ReminderManager,
     onLogout: () -> Unit,
     onThemeChange: (Boolean) -> Unit,
     onBack: () -> Unit
@@ -68,11 +71,146 @@ fun SettingsScreen(
     val entries by viewModel.entries.collectAsState()
 
     val savedPin by pinManager.pin.collectAsState(initial = "")
+    val isReminderEnabled by reminderPreferences.isEnabled.collectAsState(initial = false)
+    val reminderHour by reminderPreferences.hour.collectAsState(initial = 20)
+    val reminderMinute by reminderPreferences.minute.collectAsState(initial = 0)
 
+    var isPinEnabled by remember { mutableStateOf(false) }
     var isSyncEnabled by remember { mutableStateOf(true) }
+    var showPinDialog by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
     var showClearDialog by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
+    var pinInput by remember { mutableStateOf("") }
+    var pinError by remember { mutableStateOf("") }
+    var hourInput by remember(reminderHour) { mutableStateOf(reminderHour.toString()) }
+    var minuteInput by remember(reminderMinute) { mutableStateOf(reminderMinute.toString()) }
 
+    androidx.compose.runtime.LaunchedEffect(savedPin) {
+        isPinEnabled = savedPin.isNotEmpty()
+    }
+
+    if (showPinDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showPinDialog = false
+                pinInput = ""
+                pinError = ""
+                if (savedPin.isEmpty()) isPinEnabled = false
+            },
+            title = { Text("Установить PIN") },
+            text = {
+                Column {
+                    Text(
+                        "Введи 4-значный PIN код",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = pinInput,
+                        onValueChange = {
+                            if (it.length <= 4 && it.all { c -> c.isDigit() }) {
+                                pinInput = it
+                                pinError = ""
+                            }
+                        },
+                        label = { Text("PIN код") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        isError = pinError.isNotEmpty(),
+                        supportingText = {
+                            if (pinError.isNotEmpty()) {
+                                Text(pinError, color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (pinInput.length == 4) {
+                            scope.launch { pinManager.setPin(pinInput) }
+                            isPinEnabled = true
+                            showPinDialog = false
+                            pinInput = ""
+                        } else {
+                            pinError = "PIN должен быть 4 цифры"
+                        }
+                    }
+                ) {
+                    Text("Сохранить", color = MaterialTheme.colorScheme.primary)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showPinDialog = false
+                    pinInput = ""
+                    pinError = ""
+                    if (savedPin.isEmpty()) isPinEnabled = false
+                }) {
+                    Text("Отмена")
+                }
+            }
+        )
+    }
+
+    if (showTimePicker) {
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            title = { Text("Время напоминания") },
+            text = {
+                Column {
+                    Text(
+                        "Текущее: ${reminderHour.toString().padStart(2, '0')}:${reminderMinute.toString().padStart(2, '0')}",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("Час (0-23):", fontSize = 13.sp)
+                    OutlinedTextField(
+                        value = hourInput,
+                        onValueChange = {
+                            if (it.length <= 2 && it.all { c -> c.isDigit() }) hourInput = it
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Минуты (0-59):", fontSize = 13.sp)
+                    OutlinedTextField(
+                        value = minuteInput,
+                        onValueChange = {
+                            if (it.length <= 2 && it.all { c -> c.isDigit() }) minuteInput = it
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val h = hourInput.toIntOrNull() ?: 20
+                    val m = minuteInput.toIntOrNull() ?: 0
+                    if (h in 0..23 && m in 0..59) {
+                        scope.launch {
+                            reminderPreferences.setReminder(true, h, m)
+                        }
+                        reminderManager.setReminder(h, m)
+                        showTimePicker = false
+                    }
+                }) {
+                    Text("Сохранить", color = MaterialTheme.colorScheme.primary)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimePicker = false }) {
+                    Text("Отмена")
+                }
+            }
+        )
+    }
 
     if (showExportDialog) {
         AlertDialog(
@@ -178,17 +316,6 @@ fun SettingsScreen(
             }
 
             SettingsSection(title = "Синхронизация") {
-                SettingsSwitchRow(
-                    emoji = "☁️",
-                    title = "Синхронизация с облаком",
-                    subtitle = if (isSyncEnabled) "Включена" else "Выключена",
-                    checked = isSyncEnabled,
-                    onCheckedChange = {
-                        isSyncEnabled = it
-                        if (it) syncManager.startPeriodicSync("user123")
-                        else syncManager.stopPeriodicSync()
-                    }
-                )
                 AppleDivider()
                 SettingsClickRow(
                     emoji = "🔄",
@@ -196,6 +323,37 @@ fun SettingsScreen(
                     subtitle = "Отправить все записи в облако",
                     onClick = { syncManager.syncNow("user123") }
                 )
+            }
+
+            SettingsSection(title = "Напоминания") {
+                SettingsSwitchRow(
+                    emoji = "🔔",
+                    title = "Ежедневное напоминание",
+                    subtitle = if (isReminderEnabled)
+                        "Включено в ${reminderHour.toString().padStart(2, '0')}:${reminderMinute.toString().padStart(2, '0')}"
+                    else
+                        "Выключено",
+                    checked = isReminderEnabled,
+                    onCheckedChange = { enabled ->
+                        scope.launch {
+                            reminderPreferences.setReminder(enabled, reminderHour, reminderMinute)
+                        }
+                        if (enabled) {
+                            reminderManager.setReminder(reminderHour, reminderMinute)
+                        } else {
+                            reminderManager.cancelReminder()
+                        }
+                    }
+                )
+                if (isReminderEnabled) {
+                    AppleDivider()
+                    SettingsClickRow(
+                        emoji = "🕐",
+                        title = "Изменить время",
+                        subtitle = "${reminderHour.toString().padStart(2, '0')}:${reminderMinute.toString().padStart(2, '0')}",
+                        onClick = { showTimePicker = true }
+                    )
+                }
             }
 
 
@@ -215,6 +373,12 @@ fun SettingsScreen(
                     titleColor = MaterialTheme.colorScheme.error,
                     onClick = { showClearDialog = true }
                 )
+            }
+
+            SettingsSection(title = "О приложении") {
+                SettingsInfoRow(emoji = "📱", title = "Версия", value = "1.0.0")
+                AppleDivider()
+                SettingsInfoRow(emoji = "👨‍💻", title = "Разработчик", value = "MoodArchive")
             }
 
             Spacer(modifier = Modifier.height(16.dp))

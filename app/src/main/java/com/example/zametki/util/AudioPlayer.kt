@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -48,19 +49,24 @@ fun AudioPlayerItem(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f)
+        ) {
             Text(text = "🎙", fontSize = 24.sp)
             Spacer(modifier = Modifier.width(12.dp))
             Column {
                 Text(
                     text = fileName.ifEmpty { "Голосовая заметка" },
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 15.sp,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = if (isPlaying) "Идёт воспроизведение..." else "Нажми чтобы воспроизвести",
                     fontSize = 12.sp,
-                    color = Color.Gray
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -92,13 +98,17 @@ fun AudioPlayerItem(
                 }
             },
             colors = ButtonDefaults.buttonColors(
-                containerColor = if (isPlaying) Color.Red else Color(0xFF6200EE)
+                containerColor = if (isPlaying)
+                    MaterialTheme.colorScheme.error
+                else
+                    MaterialTheme.colorScheme.primary
             ),
-            shape = RoundedCornerShape(8.dp)
+            shape = RoundedCornerShape(12.dp)
         ) {
             Text(
                 text = if (isPlaying) "⏹" else "▶",
-                fontSize = 16.sp
+                fontSize = 16.sp,
+                color = Color.White
             )
         }
     }

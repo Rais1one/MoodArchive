@@ -70,8 +70,8 @@ fun AddEntryScreen(
 ) {
     val context = LocalContext.current
 
-    var title by remember { mutableStateOf("") }
-    var text by remember { mutableStateOf("") }
+    val title by viewModel.draftTitle.collectAsState()
+    val text by viewModel.draftText.collectAsState()
     var showError by remember { mutableStateOf("") }
 
     val emotions by viewModel.emotions.collectAsState()
@@ -106,6 +106,8 @@ fun AddEntryScreen(
 
     LaunchedEffect(Unit) {
         viewModel.loadEmotions()
+        viewModel.clearEmotion()
+        viewModel.clearDraft()
     }
 
     LaunchedEffect(isRecording) {
@@ -125,7 +127,12 @@ fun AddEntryScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = {
+                        viewModel.clearDraft()
+                        viewModel.clearEmotion()
+                        viewModel.clearAttachedFiles()
+                        onBack()
+                    }) {
                         Icon(
                             Icons.Default.ArrowBack,
                             contentDescription = "назад",
@@ -154,6 +161,7 @@ fun AddEntryScreen(
                                     )
                                     viewModel.clearEmotion()
                                     viewModel.clearAttachedFiles()
+                                    viewModel.clearDraft()
                                     onBack()
                                 }
                             }
@@ -185,8 +193,10 @@ fun AddEntryScreen(
                 TextField(
                     value = title,
                     onValueChange = {
-                        title = it
-                        showError = ""
+                        if (it.length <= 50) {
+                            viewModel.setDraftTitle(it)
+                            showError = ""
+                        }
                     },
                     placeholder = {
                         Text(
@@ -212,7 +222,9 @@ fun AddEntryScreen(
 
                 TextField(
                     value = text,
-                    onValueChange = { text = it },
+                    onValueChange = {
+                        viewModel.setDraftText(it)
+                    },
                     placeholder = {
                         Text(
                             "Что у тебя сегодня?",

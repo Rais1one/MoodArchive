@@ -15,6 +15,10 @@ class EntryRepository(private val entryDao: EntryDao) {
         return entryDao.getById(id)
     }
 
+    fun getByIdFlow(id: Long): Flow<EntryEntity?> {
+        return entryDao.getByIdFlow(id)
+    }
+
     suspend fun getByDay(userId: String, from: Long, to: Long): List<EntryEntity> {
         return entryDao.getByDay(userId, from, to)
     }
@@ -42,6 +46,8 @@ class EntryRepository(private val entryDao: EntryDao) {
     suspend fun delete(id: Long) {
         entryDao.delete(id)
     }
+
+
 
     suspend fun markSynced(id: Long) {
         entryDao.markSynced(id)

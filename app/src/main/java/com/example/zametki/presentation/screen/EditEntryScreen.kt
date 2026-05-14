@@ -1,5 +1,8 @@
 package com.example.zametki.presentation.screen
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +23,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,35 +47,82 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.zametki.data.local.entity.EntryEntity
 import com.example.zametki.domain.model.AttachmentType
 import com.example.zametki.domain.model.EmotionItem
-import com.example.zametki.data.local.entity.EntryEntity
 import com.example.zametki.presentation.viewmodel.ViewModel
+import com.example.zametki.util.AudioRecorder
+import com.example.zametki.util.copyFileToApp
+import kotlinx.coroutines.delay
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditEntryScreen(
     entry: EntryEntity,
     viewModel: ViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenCamera: () -> Unit
 ) {
+    val context = LocalContext.current
+
     var title by remember { mutableStateOf(entry.title) }
     var text by remember { mutableStateOf(entry.text) }
+    var showError by remember { mutableStateOf("") }
+    var isRecording by remember { mutableStateOf(false) }
+    var audioAmplitude by remember { mutableStateOf(0) }
+    val audioRecorder = remember { AudioRecorder(context) }
 
     val emotions by viewModel.emotions.collectAsState()
     val selectedEmotion by viewModel.selectedEmotion.collectAsState()
     val attachments by viewModel.attachments.collectAsState()
+    val attachedFiles by viewModel.attachedFiles.collectAsState()
 
     var attachmentToDelete by remember { mutableStateOf<Long?>(null) }
+
+    val imagePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            val localPath = copyFileToApp(context, it, AttachmentType.PHOTO)
+            viewModel.addAttachedFile(
+                AttachedFile(uri = Uri.fromFile(File(localPath)), type = AttachmentType.PHOTO)
+            )
+        }
+    }
+
+    val filePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            val localPath = copyFileToApp(context, it, AttachmentType.FILE)
+            viewModel.addAttachedFile(
+                AttachedFile(uri = Uri.fromFile(File(localPath)), type = AttachmentType.FILE)
+            )
+        }
+    }
 
     LaunchedEffect(entry.id) {
         viewModel.loadEmotions()
         viewModel.loadAttachments(entry.id)
-        val current = emotions.find { it.name == entry.emotionName }
-        if (current != null) viewModel.selectEmotion(current)
+    }
+
+    LaunchedEffect(emotions) {
+        if (emotions.isNotEmpty() && selectedEmotion == null) {
+            val current = emotions.find { it.name == entry.emotionName }
+            if (current != null) viewModel.selectEmotion(current)
+        }
+    }
+
+    LaunchedEffect(isRecording) {
+        while (isRecording) {
+            audioAmplitude = audioRecorder.getAmplitude()
+            delay(100)
+        }
     }
 
     if (attachmentToDelete != null) {
@@ -81,9 +133,7 @@ fun EditEntryScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        attachmentToDelete?.let { id ->
-                            viewModel.deleteAttachment(id)
-                        }
+                        attachmentToDelete?.let { id -> viewModel.deleteAttachment(id) }
                         attachmentToDelete = null
                     }
                 ) {
@@ -108,7 +158,11 @@ fun EditEntryScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = {
+                        viewModel.clearEmotion()
+                        viewModel.clearAttachedFiles()
+                        onBack()
+                    }) {
                         Icon(
                             imageVector = Icons.Default.ArrowBack,
                             contentDescription = "назад",
@@ -120,18 +174,35 @@ fun EditEntryScreen(
                     TextActionButton(
                         text = "Готово",
                         onClick = {
-                            viewModel.updateEntry(
-                                entry.copy(
-                                    title = title,
-                                    text = text,
-                                    emotionName = selectedEmotion?.name ?: entry.emotionName,
-                                    emotionEmoji = selectedEmotion?.emoji ?: entry.emotionEmoji,
-                                    emotionColor = selectedEmotion?.color ?: entry.emotionColor,
-                                    isSynced = false
-                                )
-                            )
-                            viewModel.clearEmotion()
-                            onBack()
+                            when {
+                                title.isEmpty() -> showError = "Введи заголовок"
+                                selectedEmotion == null -> showError = "Выбери настроение"
+                                else -> {
+                                    attachedFiles.forEach { file ->
+                                        viewModel.addAttachment(
+                                            com.example.zametki.data.local.entity.AttachmentEntity(
+                                                entryId = entry.id,
+                                                type = file.type,
+                                                localPath = file.uri.path ?: file.uri.toString(),
+                                                fileName = file.uri.lastPathSegment ?: "файл"
+                                            )
+                                        )
+                                    }
+                                    viewModel.updateEntry(
+                                        entry.copy(
+                                            title = title,
+                                            text = text,
+                                            emotionName = selectedEmotion?.name ?: entry.emotionName,
+                                            emotionEmoji = selectedEmotion?.emoji ?: entry.emotionEmoji,
+                                            emotionColor = selectedEmotion?.color ?: entry.emotionColor,
+                                            isSynced = false
+                                        )
+                                    )
+                                    viewModel.clearEmotion()
+                                    viewModel.clearAttachedFiles()
+                                    onBack()
+                                }
+                            }
                         }
                     )
                 },
@@ -159,7 +230,12 @@ fun EditEntryScreen(
             ) {
                 TextField(
                     value = title,
-                    onValueChange = { title = it },
+                    onValueChange = {
+                        if (it.length <= 50) {
+                            title = it
+                            showError = ""
+                        }
+                    },
                     placeholder = {
                         Text(
                             "Заголовок",
@@ -204,6 +280,16 @@ fun EditEntryScreen(
                 )
             }
 
+            if (showError.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = showError,
+                    color = MaterialTheme.colorScheme.error,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 32.dp)
+                )
+            }
+
             if (attachments.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(24.dp))
 
@@ -218,7 +304,7 @@ fun EditEntryScreen(
                         .clip(RoundedCornerShape(16.dp))
                         .background(MaterialTheme.colorScheme.surface)
                 ) {
-                    attachments.forEach { attachment ->
+                    attachments.forEachIndexed { index, attachment ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -243,7 +329,6 @@ fun EditEntryScreen(
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                             }
-
                             Text(
                                 text = "✕",
                                 fontSize = 16.sp,
@@ -253,7 +338,104 @@ fun EditEntryScreen(
                                 }
                             )
                         }
+                        if (index < attachments.size - 1) AppleDivider()
                     }
+                }
+            }
+
+            if (attachedFiles.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(16.dp))
+
+                SectionTitle(title = "Новые файлы: ${attachedFiles.size}")
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                ) {
+                    attachedFiles.forEachIndexed { index, file ->
+                        AttachedFileItem(
+                            file = file,
+                            onRemove = { viewModel.removeAttachedFile(index) }
+                        )
+                        if (index < attachedFiles.size - 1) AppleDivider()
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            SectionTitle(title = "Добавить файлы")
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                AttachButton(
+                    label = "Камера",
+                    emoji = "📷",
+                    onClick = onOpenCamera
+                )
+                AttachButton(
+                    label = "Галерея",
+                    emoji = "🖼️",
+                    onClick = { imagePicker.launch("image/*") }
+                )
+                AttachButton(
+                    label = "Файл",
+                    emoji = "📎",
+                    onClick = { filePicker.launch("*/*") }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            SectionTitle(title = "Голосовая заметка")
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Button(
+                    onClick = {
+                        if (isRecording) {
+                            audioRecorder.stop()
+                            isRecording = false
+                            audioRecorder.currentFile?.let { file ->
+                                viewModel.addAttachedFile(
+                                    AttachedFile(
+                                        uri = Uri.fromFile(file),
+                                        type = AttachmentType.AUDIO
+                                    )
+                                )
+                            }
+                        } else {
+                            audioRecorder.start()
+                            isRecording = true
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isRecording)
+                            MaterialTheme.colorScheme.error
+                        else
+                            MaterialTheme.colorScheme.primary
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(text = if (isRecording) "⏹ Стоп" else "🎙 Записать")
+                }
+
+                if (isRecording) {
+                    AudioWaveform(amplitude = audioAmplitude)
                 }
             }
 
@@ -276,6 +458,7 @@ fun EditEntryScreen(
                                 viewModel.clearEmotion()
                             } else {
                                 viewModel.selectEmotion(emotion)
+                                showError = ""
                             }
                         }
                     )

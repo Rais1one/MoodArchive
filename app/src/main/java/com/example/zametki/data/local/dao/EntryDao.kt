@@ -17,6 +17,9 @@ interface EntryDao {
     @Query("SELECT * FROM entries WHERE id = :id")
     suspend fun getById(id: Long): EntryEntity?
 
+    @Query("SELECT * FROM entries WHERE id = :id")
+    fun getByIdFlow(id: Long): Flow<EntryEntity?>
+
     @Query("SELECT * FROM entries WHERE userId = :userId AND isDeleted = 0 AND createdAt BETWEEN :from AND :to ORDER BY createdAt DESC")
     suspend fun getByDay(userId: String, from: Long, to: Long): List<EntryEntity>
 
@@ -32,13 +35,15 @@ interface EntryDao {
     @Query("SELECT * FROM entries WHERE isSynced = 0 AND isDeleted = 0")
     suspend fun getUnsynced(): List<EntryEntity>
 
+
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(entry: EntryEntity)
 
     @Update
     suspend fun update(entry: EntryEntity)
 
-    @Query("UPDATE entries SET isDeleted = 1, updatedAt = :now WHERE id = :id")
+    @Query("UPDATE entries SET isDeleted = 1, isSynced = 0, updatedAt = :now WHERE id = :id")
     suspend fun delete(id: Long, now: Long = System.currentTimeMillis())
 
     @Query("UPDATE entries SET isSynced = 1 WHERE id = :id")

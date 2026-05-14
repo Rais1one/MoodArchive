@@ -3,15 +3,16 @@ package com.example.zametki.presentation.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.zametki.presentation.screen.AttachedFile
-import com.example.zametki.sync.SyncManager
 import com.example.zametki.data.local.dao.EmotionStat
 import com.example.zametki.data.local.entity.AttachmentEntity
 import com.example.zametki.data.local.entity.EmotionEntity
 import com.example.zametki.data.local.entity.EntryEntity
+import com.example.zametki.data.remote.FirebaseRepository
 import com.example.zametki.data.repository.AttachmentRepository
 import com.example.zametki.data.repository.EmotionRepository
 import com.example.zametki.data.repository.EntryRepository
+import com.example.zametki.presentation.screen.AttachedFile
+import com.example.zametki.sync.SyncManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -21,7 +22,8 @@ class ViewModel(
     private val entryRepository: EntryRepository,
     private val attachmentRepository: AttachmentRepository,
     private val emotionRepository: EmotionRepository,
-    private val syncManager: SyncManager
+    private val syncManager: SyncManager,
+    private val firebaseRepository: FirebaseRepository
 ) : ViewModel() {
 
     private val _entries = MutableStateFlow<List<EntryEntity>>(emptyList())
@@ -54,10 +56,55 @@ class ViewModel(
     private val _attachedFiles = MutableStateFlow<List<AttachedFile>>(emptyList())
     val attachedFiles: StateFlow<List<AttachedFile>> = _attachedFiles
 
+    private val _draftTitle = MutableStateFlow("")
+    val draftTitle: StateFlow<String> = _draftTitle
+
+    private val _draftText = MutableStateFlow("")
+    val draftText: StateFlow<String> = _draftText
+
+    private val _currentEntry = MutableStateFlow<EntryEntity?>(null)
+    val currentEntry: StateFlow<EntryEntity?> = _currentEntry
+
+    private val _isSyncingFromCloud = MutableStateFlow(false)
+    val isSyncingFromCloud: StateFlow<Boolean> = _isSyncingFromCloud
+
     private var currentUserId: String = ""
 
     fun setUserId(userId: String) {
         currentUserId = userId
+    }
+
+    fun setDraftTitle(value: String) { _draftTitle.value = value }
+    fun setDraftText(value: String) { _draftText.value = value }
+    fun clearDraft() {
+        _draftTitle.value = ""
+        _draftText.value = ""
+    }
+
+    fun syncFromFirebase(userId: String) {
+        viewModelScope.launch {
+            try {
+                _isSyncingFromCloud.value = true
+
+                val remoteEntries = firebaseRepository.getEntries(userId)
+
+                remoteEntries.forEach { remoteEntry ->
+                    val existing = entryRepository.getById(remoteEntry.id)
+                    if (existing == null) {
+                        entryRepository.insert(remoteEntry.copy(isSynced = true))
+                    } else {
+                        if (remoteEntry.updatedAt > existing.updatedAt) {
+                            entryRepository.update(remoteEntry.copy(isSynced = true))
+                        }
+                    }
+                }
+
+            } catch (e: Exception) {
+                _error.value = e.message
+            } finally {
+                _isSyncingFromCloud.value = false
+            }
+        }
     }
 
     fun loadEntries(userId: String) {
@@ -259,13 +306,26 @@ class ViewModel(
     fun clearError() {
         _error.value = null
     }
+
+    fun loadEntry(entryId: Long) {
+        viewModelScope.launch {
+            try {
+                entryRepository.getByIdFlow(entryId).collectLatest { entry ->
+                    _currentEntry.value = entry
+                }
+            } catch (e: Exception) {
+                _error.value = e.message
+            }
+        }
+    }
 }
 
 class MainViewModelFactory(
     private val entryRepository: EntryRepository,
     private val attachmentRepository: AttachmentRepository,
     private val emotionRepository: EmotionRepository,
-    private val syncManager: SyncManager
+    private val syncManager: SyncManager,
+    private val firebaseRepository: FirebaseRepository
 ) : ViewModelProvider.Factory {
 
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -273,7 +333,8 @@ class MainViewModelFactory(
             entryRepository,
             attachmentRepository,
             emotionRepository,
-            syncManager
+            syncManager,
+            firebaseRepository
         ) as T
     }
 }

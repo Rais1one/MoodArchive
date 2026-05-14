@@ -80,23 +80,20 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.6.1")
     testImplementation("junit:junit:4.13.2")
     ksp("androidx.room:room-compiler:$roomVersion")
-    // camerax
+
     implementation(libs.camerax.core)
     implementation(libs.camerax.camera2)
     implementation(libs.camerax.lifecycle)
     implementation(libs.camerax.view)
 
-    // геолокация
     implementation(libs.location)
     implementation(libs.coil)
     implementation(libs.datastore)
 
-    // firebase
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.firestore)
     implementation(libs.firebase.storage)
     implementation(libs.firebase.auth)
 
-    // workmanager
     implementation(libs.workmanager)
 }
